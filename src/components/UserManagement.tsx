@@ -13,27 +13,36 @@ export const UserManagement: React.FC = () => {
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<'super_admin' | 'admin' | 'staff'>('staff');
+  const [loading, setLoading] = useState(true);
 
-  const loadUsers = () => {
-    setUsers(AuthService.getAllUsers());
+  const loadUsers = async () => {
+    setLoading(true);
+    try {
+      const list = await AuthService.getAllUsers();
+      setUsers(list);
+    } catch (e) {
+      console.error("Error loading users:", e);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
     loadUsers();
   }, []);
 
-  const handleCreateUser = (e: React.FormEvent) => {
+  const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !username.trim()) return;
 
-    AuthService.createUser({
+    await AuthService.createUser({
       name,
       username,
       email,
       role
     });
 
-    loadUsers();
+    await loadUsers();
     setShowAddModal(false);
     setName('');
     setUsername('');
@@ -41,7 +50,7 @@ export const UserManagement: React.FC = () => {
     setRole('staff');
   };
 
-  const handleDeleteUser = (id: string) => {
+  const handleDeleteUser = async (id: string) => {
     const current = AuthService.getCurrentUser();
     if (current && current.id === id) {
       alert("You cannot delete your own account while logged in!");
@@ -49,8 +58,8 @@ export const UserManagement: React.FC = () => {
     }
 
     if (window.confirm("Are you sure you want to delete this user profile? They will immediately lose access.")) {
-      AuthService.deleteUser(id);
-      loadUsers();
+      await AuthService.deleteUser(id);
+      await loadUsers();
     }
   };
 
@@ -94,50 +103,53 @@ export const UserManagement: React.FC = () => {
 
       {/* Users grid list */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {users.map((u) => (
-          <div 
-            key={u.id}
-            className="bg-white dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800/50 rounded-2xl p-5 flex flex-col justify-between hover:shadow-xl hover:shadow-slate-100/50 dark:hover:shadow-none hover:-translate-y-0.5 transition-all duration-200"
-          >
-            <div className="space-y-4">
-              {/* Header profile info */}
-              <div className="flex justify-between items-start">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-indigo-600/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-base border border-indigo-500/20">
-                    {u.name.split(' ').map(n => n[0]).join('').toUpperCase()}
+        {loading ? (
+          <div className="col-span-full text-center py-20">
+            <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-indigo-650 mx-auto" />
+          </div>
+        ) : (
+          users.map((u) => (
+            <div 
+              key={u.id}
+              className="bg-white dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800/50 rounded-2xl p-5 flex flex-col justify-between hover:shadow-xl hover:shadow-slate-100/50 dark:hover:shadow-none hover:-translate-y-0.5 transition-all duration-200"
+            >
+              <div className="space-y-4">
+                <div className="flex justify-between items-start">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-indigo-600/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-base border border-indigo-500/20">
+                      {u.name.split(' ').map(n => n[0]).join('').toUpperCase()}
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-sm leading-tight">{u.name}</h3>
+                      <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">@{u.username}</span>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="font-bold text-sm leading-tight">{u.name}</h3>
-                    <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">@{u.username}</span>
-                  </div>
+                  
+                  <button
+                    onClick={() => handleDeleteUser(u.id)}
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/20 transition-all"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
                 </div>
-                
-                {/* Delete button */}
-                <button
-                  onClick={() => handleDeleteUser(u.id)}
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/20 transition-all"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
 
-              {/* Role badge and info */}
-              <div className="space-y-2 border-t border-slate-100 dark:border-slate-800/50 pt-3 text-xs">
-                <div className="flex justify-between items-center">
-                  <span className="text-slate-400">Security Clearance</span>
-                  <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${getRoleColor(u.role)}`}>
-                    {getRoleLabel(u.role)}
-                  </span>
-                </div>
-                
-                <div className="flex justify-between items-center">
-                  <span className="text-slate-400">Email Address</span>
-                  <span className="font-semibold text-slate-600 dark:text-slate-300 truncate max-w-[150px]">{u.email || 'None'}</span>
+                <div className="space-y-2 border-t border-slate-100 dark:border-slate-800/50 pt-3 text-xs">
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-400">Security Clearance</span>
+                    <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${getRoleColor(u.role)}`}>
+                      {getRoleLabel(u.role)}
+                    </span>
+                  </div>
+                  
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-400">Email Address</span>
+                    <span className="font-semibold text-slate-600 dark:text-slate-300 truncate max-w-[150px]">{u.email || 'None'}</span>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        ))}
+          ))
+        )}
       </div>
 
       {/* PROVISION USER MODAL */}

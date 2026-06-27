@@ -26,10 +26,19 @@ export const Inventory: React.FC = () => {
   const [sellingPrice, setSellingPrice] = useState<number>(0);
   const [stock, setStock] = useState<number>(0);
   const [category, setCategory] = useState('Groceries');
+  const [loading, setLoading] = useState(true);
 
   // Load products
-  const loadProducts = () => {
-    setProducts(ProductService.getProducts());
+  const loadProducts = async () => {
+    setLoading(true);
+    try {
+      const list = await ProductService.getProducts();
+      setProducts(list);
+    } catch (e) {
+      console.error("Error loading products:", e);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -50,7 +59,6 @@ export const Inventory: React.FC = () => {
   const handleOpenAdd = () => {
     setEditingProduct(null);
     setName('');
-    // Auto-generate a unique SKU and random barcode for convenience
     setSku(`PROD-${Date.now().toString().slice(-6)}`);
     setBarcode(`890${Math.floor(1000000000 + Math.random() * 9000000000)}`);
     setPurchasePrice(0);
@@ -74,11 +82,11 @@ export const Inventory: React.FC = () => {
   };
 
   // Save Product (Add or Edit)
-  const handleSaveProduct = (e: React.FormEvent) => {
+  const handleSaveProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
 
-    ProductService.saveProduct({
+    await ProductService.saveProduct({
       id: editingProduct?.id,
       name,
       sku,
@@ -89,19 +97,18 @@ export const Inventory: React.FC = () => {
       category
     });
 
-    loadProducts();
+    await loadProducts();
     setShowAddEditModal(false);
   };
 
   // Delete Product
-  const handleDeleteProduct = (id: string) => {
+  const handleDeleteProduct = async (id: string) => {
     if (window.confirm('Are you sure you want to delete this product?')) {
-      ProductService.deleteProduct(id);
-      loadProducts();
+      await ProductService.deleteProduct(id);
+      await loadProducts();
     }
   };
 
-  // Categories list
   const categories = ['Groceries', 'Oils & Ghee', 'Beverages', 'Hygiene', 'Household', 'Snacks', 'Other'];
 
   return (
@@ -151,90 +158,96 @@ export const Inventory: React.FC = () => {
 
       {/* Catalog Table */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800/50 rounded-2xl overflow-hidden shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-slate-50 dark:bg-slate-950 text-slate-400 border-b border-slate-200 dark:border-slate-800 text-xs font-bold uppercase tracking-wider">
-                <th className="px-5 py-4">Product Details</th>
-                <th className="px-5 py-4">Category</th>
-                <th className="px-5 py-4 text-right">Purchase Price</th>
-                <th className="px-5 py-4 text-right">Selling Price</th>
-                <th className="px-5 py-4 text-center">Stock Count</th>
-                <th className="px-5 py-4 text-center">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-              {filteredProducts.map((p) => {
-                const isOutOfStock = p.stock === 0;
-                const isLowStock = p.stock > 0 && p.stock < 10;
-                
-                return (
-                  <tr key={p.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-950/20">
-                    <td className="px-5 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 rounded-lg">
-                          <Barcode className="w-5 h-5" />
+        {loading ? (
+          <div className="text-center py-20">
+            <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-indigo-650 mx-auto" />
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-50 dark:bg-slate-950 text-slate-400 border-b border-slate-200 dark:border-slate-800 text-xs font-bold uppercase tracking-wider">
+                  <th className="px-5 py-4">Product Details</th>
+                  <th className="px-5 py-4">Category</th>
+                  <th className="px-5 py-4 text-right">Purchase Price</th>
+                  <th className="px-5 py-4 text-right">Selling Price</th>
+                  <th className="px-5 py-4 text-center">Stock Count</th>
+                  <th className="px-5 py-4 text-center">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                {filteredProducts.map((p) => {
+                  const isOutOfStock = p.stock === 0;
+                  const isLowStock = p.stock > 0 && p.stock < 10;
+                  
+                  return (
+                    <tr key={p.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-950/20">
+                      <td className="px-5 py-4">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 rounded-lg">
+                            <Barcode className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold">{p.name}</p>
+                            <span className="text-xs text-slate-400 dark:text-slate-500 font-medium">SKU: {p.sku} | Barcode: {p.barcode}</span>
+                          </div>
                         </div>
-                        <div>
-                          <p className="text-sm font-semibold">{p.name}</p>
-                          <span className="text-xs text-slate-400 dark:text-slate-500 font-medium">SKU: {p.sku} | Barcode: {p.barcode}</span>
+                      </td>
+                      <td className="px-5 py-4 text-sm font-medium text-slate-600 dark:text-slate-400">
+                        {p.category}
+                      </td>
+                      <td className="px-5 py-4 text-right font-bold text-sm font-sans">
+                        ₹{p.purchasePrice}
+                      </td>
+                      <td className="px-5 py-4 text-right font-bold text-sm text-indigo-600 dark:text-indigo-400 font-sans">
+                        ₹{p.sellingPrice}
+                      </td>
+                      <td className="px-5 py-4 text-center">
+                        {isOutOfStock ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-rose-100 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-200/50 dark:border-rose-500/20">
+                            Out of Stock
+                          </span>
+                        ) : isLowStock ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-orange-100 dark:bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-200/50 dark:border-orange-500/20">
+                            <AlertTriangle className="w-3 h-3" />
+                            Low Stock ({p.stock})
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-200/50 dark:border-emerald-500/20">
+                            In Stock ({p.stock})
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-5 py-4 text-center">
+                        <div className="flex items-center justify-center gap-1.5">
+                          <button
+                            onClick={() => handleOpenEdit(p)}
+                            className="p-1.5 rounded-lg text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 transition-colors"
+                          >
+                            <Edit3 className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteProduct(p.id)}
+                            className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         </div>
-                      </div>
-                    </td>
-                    <td className="px-5 py-4 text-sm font-medium text-slate-600 dark:text-slate-400">
-                      {p.category}
-                    </td>
-                    <td className="px-5 py-4 text-right font-bold text-sm font-sans">
-                      ₹{p.purchasePrice}
-                    </td>
-                    <td className="px-5 py-4 text-right font-bold text-sm text-indigo-600 dark:text-indigo-400 font-sans">
-                      ₹{p.sellingPrice}
-                    </td>
-                    <td className="px-5 py-4 text-center">
-                      {isOutOfStock ? (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-rose-100 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-200/50 dark:border-rose-500/20">
-                          Out of Stock
-                        </span>
-                      ) : isLowStock ? (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-orange-100 dark:bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-200/50 dark:border-orange-500/20">
-                          <AlertTriangle className="w-3 h-3" />
-                          Low Stock ({p.stock})
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-200/50 dark:border-emerald-500/20">
-                          In Stock ({p.stock})
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-5 py-4 text-center">
-                      <div className="flex items-center justify-center gap-1.5">
-                        <button
-                          onClick={() => handleOpenEdit(p)}
-                          className="p-1.5 rounded-lg text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 transition-colors"
-                        >
-                          <Edit3 className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteProduct(p.id)}
-                          className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {filteredProducts.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="text-center py-20 text-slate-400 dark:text-slate-500 text-sm">
+                      No items found matching the filter queries.
                     </td>
                   </tr>
-                );
-              })}
-              {filteredProducts.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="text-center py-20 text-slate-400 dark:text-slate-500 text-sm">
-                    No items found matching the filter queries.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {/* ADD / EDIT PRODUCT MODAL */}

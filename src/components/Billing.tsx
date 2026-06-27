@@ -48,7 +48,11 @@ export const Billing: React.FC<BillingProps> = ({ currentUser }) => {
 
   // Load customers
   useEffect(() => {
-    setCustomers(LedgerService.getCustomers());
+    const loadCustomersList = async () => {
+      const list = await LedgerService.getCustomers();
+      setCustomers(list);
+    };
+    loadCustomersList();
   }, [showAddCustomer]);
 
   // Autofocus search input on mount
@@ -59,17 +63,14 @@ export const Billing: React.FC<BillingProps> = ({ currentUser }) => {
   // Keyboard Shortcuts Event Listener
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // F2 for New Invoice
       if (e.key === 'F2') {
         e.preventDefault();
         handleNewInvoice();
       }
-      // F5 to Save & Print
       if (e.key === 'F5') {
         e.preventDefault();
         handleSaveAndSubmit();
       }
-      // "+" to add a new row / focus search
       if (e.key === '+') {
         const activeEl = document.activeElement;
         const isInput = activeEl?.tagName === 'INPUT' || activeEl?.tagName === 'SELECT' || activeEl?.tagName === 'TEXTAREA';
@@ -88,27 +89,28 @@ export const Billing: React.FC<BillingProps> = ({ currentUser }) => {
 
   // Product Search suggestions logic
   useEffect(() => {
-    if (searchQuery.trim().length > 0) {
-      const results = ProductService.search(searchQuery);
-      setSuggestions(results);
-      setActiveSuggestionIndex(0);
-    } else {
-      setSuggestions([]);
-      setActiveSuggestionIndex(-1);
-    }
+    const fetchSuggestions = async () => {
+      if (searchQuery.trim().length > 0) {
+        const results = await ProductService.search(searchQuery);
+        setSuggestions(results);
+        setActiveSuggestionIndex(0);
+      } else {
+        setSuggestions([]);
+        setActiveSuggestionIndex(-1);
+      }
+    };
+    fetchSuggestions();
   }, [searchQuery]);
 
   // Live POS calculation
   const calculations = useMemo(() => {
     const subtotal = items.reduce((sum, item) => sum + (item.price * item.qty), 0);
     
-    // Tax computation (CGST & SGST split)
     const taxAmount = items.reduce((sum, item) => {
       const itemGst = (item.price * item.qty) * (item.gstRate / 100);
       return sum + itemGst;
     }, 0);
 
-    // Discount computation
     let discountAmount = 0;
     if (discountType === 'percentage') {
       discountAmount = (subtotal + taxAmount) * (discountValue / 100);
@@ -134,11 +136,11 @@ export const Billing: React.FC<BillingProps> = ({ currentUser }) => {
   }, [calculations.grandTotal, paymentMode]);
 
   // Quick Customer Creation
-  const handleAddCustomer = (e: React.FormEvent) => {
+  const handleAddCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCustomerName.trim()) return;
 
-    const contact = LedgerService.saveContact({
+    const contact = await LedgerService.saveContact({
       type: 'customer',
       name: newCustomerName,
       phone: newCustomerPhone,
@@ -173,7 +175,7 @@ export const Billing: React.FC<BillingProps> = ({ currentUser }) => {
         name: product.name,
         qty: 1,
         price: product.sellingPrice,
-        gstRate: 18, // Standard 18% GST (9% CGST + 9% SGST)
+        gstRate: 18,
         gstAmount: product.sellingPrice * 0.18,
         discount: 0,
         total: product.sellingPrice
@@ -188,7 +190,7 @@ export const Billing: React.FC<BillingProps> = ({ currentUser }) => {
   };
 
   // suggestions list keyboard navigation
-  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  const handleSearchKeyDown = async (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
       setActiveSuggestionIndex(prev => Math.min(prev + 1, suggestions.length - 1));
@@ -197,12 +199,10 @@ export const Billing: React.FC<BillingProps> = ({ currentUser }) => {
       setActiveSuggestionIndex(prev => Math.max(prev - 1, 0));
     } else if (e.key === 'Enter') {
       e.preventDefault();
-      // If suggestions are active, add the active item
       if (activeSuggestionIndex >= 0 && suggestions[activeSuggestionIndex]) {
         handleAddItem(suggestions[activeSuggestionIndex]);
       } else {
-        // Barcode reader fast resolution path: check if query is exact SKU or Barcode
-        const matched = ProductService.findByBarcodeOrSku(searchQuery);
+        const matched = await ProductService.findByBarcodeOrSku(searchQuery);
         if (matched) {
           handleAddItem(matched);
         }
@@ -241,7 +241,7 @@ export const Billing: React.FC<BillingProps> = ({ currentUser }) => {
     searchInputRef.current?.focus();
   };
 
-  const handleSaveAndSubmit = () => {
+  const handleSaveAndSubmit = async () => {
     if (items.length === 0) {
       alert('Please add at least one item to invoice!');
       return;
@@ -251,7 +251,7 @@ export const Billing: React.FC<BillingProps> = ({ currentUser }) => {
       ? 'Walk-in Customer' 
       : (customers.find(c => c.id === selectedCustomerId)?.name || 'Customer');
 
-    const invoice = BillingService.createInvoice({
+    const invoice = await BillingService.createInvoice({
       customerId: selectedCustomerId,
       customerName,
       items,
@@ -264,7 +264,6 @@ export const Billing: React.FC<BillingProps> = ({ currentUser }) => {
       createdBy: currentUser.name
     });
 
-    // Confetti effect
     confetti({
       particleCount: 150,
       spread: 80,
@@ -290,7 +289,7 @@ export const Billing: React.FC<BillingProps> = ({ currentUser }) => {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full items-start">
       
-      {/* Printable Invoice Container (Hidden in screen view, visible in Print view) */}
+      {/* Printable Invoice Container */}
       {printedInvoice && (
         <div id="print-area" className="p-4 font-mono text-sm max-w-sm mx-auto bg-white border border-slate-200">
           <div className="text-center font-bold text-lg mb-1">VYAPAARPAY BILLING</div>
@@ -349,7 +348,7 @@ export const Billing: React.FC<BillingProps> = ({ currentUser }) => {
         </div>
       )}
 
-      {/* POS Left Column (Billing Table and Search) */}
+      {/* POS Left Column */}
       <div className="lg:col-span-2 space-y-4">
         
         {/* Customer Select & Quick Add */}
@@ -498,11 +497,10 @@ export const Billing: React.FC<BillingProps> = ({ currentUser }) => {
         </div>
       </div>
 
-      {/* POS Right Column (Calculations, Payment and Submit) */}
+      {/* POS Right Column */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800/50 rounded-2xl p-5 space-y-6">
         <h4 className="font-bold text-base border-b border-slate-100 dark:border-slate-800 pb-3">Payment Summary</h4>
         
-        {/* Totals panel */}
         <div className="space-y-3.5 text-sm">
           <div className="flex justify-between text-slate-500">
             <span>Items Subtotal</span>
@@ -513,7 +511,6 @@ export const Billing: React.FC<BillingProps> = ({ currentUser }) => {
             <span className="font-semibold font-sans">₹{calculations.taxAmount.toFixed(2)}</span>
           </div>
 
-          {/* Discount custom inputs */}
           <div className="space-y-2 border-y border-slate-100 dark:border-slate-800 py-3">
             <div className="flex justify-between items-center">
               <span className="text-slate-500">Discount</span>
@@ -550,7 +547,6 @@ export const Billing: React.FC<BillingProps> = ({ currentUser }) => {
           </div>
         </div>
 
-        {/* Payment mode select */}
         <div className="space-y-2.5">
           <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wide">Payment Mode</label>
           <div className="grid grid-cols-2 gap-2">
@@ -571,7 +567,6 @@ export const Billing: React.FC<BillingProps> = ({ currentUser }) => {
           </div>
         </div>
 
-        {/* Paid amount & Change calculator */}
         {paymentMode !== 'credit' && (
           <div className="space-y-2">
             <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wide">Cash Received (₹)</label>
@@ -591,7 +586,6 @@ export const Billing: React.FC<BillingProps> = ({ currentUser }) => {
           </div>
         )}
 
-        {/* If Credit mode is active */}
         {paymentMode === 'credit' && (
           <div className="space-y-2">
             <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wide">Partial Payment (₹)</label>
@@ -609,7 +603,6 @@ export const Billing: React.FC<BillingProps> = ({ currentUser }) => {
           </div>
         )}
 
-        {/* Action Buttons */}
         <div className="grid grid-cols-1 gap-2 pt-2">
           <button
             onClick={handleSaveAndSubmit}

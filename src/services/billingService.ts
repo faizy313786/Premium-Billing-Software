@@ -2,16 +2,25 @@ import { DB, Invoice, InvoiceItem } from './db';
 import { ProductService } from './productService';
 import { LedgerService } from './ledgerService';
 
+const API_URL = 'http://localhost:8080/api/invoices';
+
 export class BillingService {
-  static getInvoices(): Invoice[] {
+  static async getInvoices(): Promise<Invoice[]> {
+    try {
+      const response = await fetch(API_URL);
+      if (response.ok) {
+        return await response.json() as Invoice[];
+      }
+    } catch (e) {
+      console.warn('Backend Invoices API offline, falling back to LocalStorage:', e);
+    }
     return DB.getInvoices();
   }
 
-  static getNextInvoiceNumber(): string {
-    const invoices = DB.getInvoices();
+  static async getNextInvoiceNumber(): Promise<string> {
+    const invoices = await this.getInvoices();
     if (invoices.length === 0) return 'INV-1001';
     
-    // Extract max invoice number suffix
     const numbers = invoices.map(inv => {
       const match = inv.invoiceNumber.match(/INV-(\d+)/);
       return match ? parseInt(match[1], 10) : 1000;
@@ -20,7 +29,7 @@ export class BillingService {
     return `INV-${maxNum + 1}`;
   }
 
-  static createInvoice(invoiceData: {
+  static async createInvoice(invoiceData: {
     customerId: string;
     customerName: string;
     items: InvoiceItem[];
@@ -31,43 +40,68 @@ export class BillingService {
     paidAmount: number;
     paymentMode: 'cash' | 'card' | 'upi' | 'credit';
     createdBy: string;
-  }): Invoice {
+  }): Promise<Invoice> {
+    const nextNum = await this.getNextInvoiceNumber();
+    
+    try {
+      const response = await fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: '',
+          invoiceNumber: nextNum,
+          customerId: invoiceData.customerId,
+          customerName: invoiceData.customerName,
+          items: invoiceData.items,
+          subtotal: invoiceData.subtotal,
+          taxAmount: invoiceData.taxAmount,
+          discountAmount: invoiceData.discountAmount,
+          grandTotal: invoiceData.grandTotal,
+          paidAmount: invoiceData.paidAmount,
+          balance: invoiceData.paymentMode === 'credit' ? invoiceData.grandTotal - invoiceData.paidAmount : 0,
+          paymentMode: invoiceData.paymentMode,
+          date: new Date().toISOString(),
+          createdBy: invoiceData.createdBy
+        })
+      });
+      if (response.ok) {
+        return await response.json() as Invoice;
+      }
+    } catch (e) {
+      console.warn('Backend Invoices API offline, executing LocalStorage flow:', e);
+    }
+
+    // Offline Fallback Flow
     const invoices = DB.getInvoices();
-    const invoiceNumber = this.getNextInvoiceNumber();
     const balance = invoiceData.paymentMode === 'credit' 
       ? invoiceData.grandTotal - invoiceData.paidAmount 
       : 0;
 
     const newInvoice: Invoice = {
       id: 'inv_' + Date.now(),
-      invoiceNumber,
+      invoiceNumber: nextNum,
       date: new Date().toISOString(),
       balance,
       ...invoiceData
     };
 
-    // 1. Decrement Stock for all items
+    // Decrement stock
     for (const item of invoiceData.items) {
       ProductService.decrementStock(item.productId, item.qty);
     }
 
-    // 2. If it's a credit sale (or paid amount is less than total) and customer is valid
-    if (invoiceData.customerId && invoiceData.customerId !== 'walkin') {
-      if (invoiceData.paymentMode === 'credit' && balance > 0) {
-        // Add credit entry to ledger
-        LedgerService.addTransaction({
-          entityId: invoiceData.customerId,
-          type: 'debit', // they owe us more
-          amount: balance,
-          description: `Unpaid dues on Invoice #${invoiceNumber}`
-        });
-      }
+    // Update customer ledger
+    if (invoiceData.customerId && invoiceData.customerId !== 'walkin' && invoiceData.paymentMode === 'credit' && balance > 0) {
+      LedgerService.addTransaction({
+        entityId: invoiceData.customerId,
+        type: 'debit',
+        amount: balance,
+        description: `Unpaid dues on Invoice #${nextNum}`
+      });
     }
 
-    // 3. Save Invoice
     invoices.push(newInvoice);
     DB.saveInvoices(invoices);
-
     return newInvoice;
   }
 }

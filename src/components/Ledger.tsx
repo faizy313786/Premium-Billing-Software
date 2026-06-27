@@ -16,6 +16,7 @@ export const Ledger: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedContact, setSelectedContact] = useState<CustomerSupplier | null>(null);
   const [transactions, setTransactions] = useState<LedgerTransaction[]>([]);
+  const [loading, setLoading] = useState(true);
   
   // Add Contact Modal State
   const [showAddContact, setShowAddContact] = useState(false);
@@ -26,16 +27,23 @@ export const Ledger: React.FC = () => {
 
   // Record Payment Modal State
   const [showRecordPayment, setShowRecordPayment] = useState(false);
-  const [paymentType, setPaymentType] = useState<'debit' | 'credit'>('credit'); // credit = reduces balance
+  const [paymentType, setPaymentType] = useState<'debit' | 'credit'>('credit');
   const [paymentAmount, setPaymentAmount] = useState<number>(0);
   const [paymentDescription, setPaymentDescription] = useState('');
 
   // Load Contacts
-  const loadContacts = () => {
-    const list = activeTab === 'customer' 
-      ? LedgerService.getCustomers() 
-      : LedgerService.getSuppliers();
-    setContacts(list);
+  const loadContacts = async () => {
+    setLoading(true);
+    try {
+      const list = activeTab === 'customer' 
+        ? await LedgerService.getCustomers() 
+        : await LedgerService.getSuppliers();
+      setContacts(list);
+    } catch (e) {
+      console.error("Error loading contacts:", e);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -46,19 +54,22 @@ export const Ledger: React.FC = () => {
 
   // Load transactions when contact is selected
   useEffect(() => {
-    if (selectedContact) {
-      const list = LedgerService.getTransactionsForEntity(selectedContact.id);
-      setTransactions(list);
-    } else {
-      setTransactions([]);
-    }
+    const fetchTransactions = async () => {
+      if (selectedContact) {
+        const list = await LedgerService.getTransactionsForEntity(selectedContact.id);
+        setTransactions(list);
+      } else {
+        setTransactions([]);
+      }
+    };
+    fetchTransactions();
   }, [selectedContact]);
 
   // Filter contacts based on search query
   const filteredContacts = useMemo(() => {
     return contacts.filter(c => 
       c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.phone.includes(searchQuery)
+      (c.phone && c.phone.includes(searchQuery))
     );
   }, [contacts, searchQuery]);
 
@@ -68,11 +79,11 @@ export const Ledger: React.FC = () => {
   }, [contacts]);
 
   // Handle Save Contact
-  const handleSaveContact = (e: React.FormEvent) => {
+  const handleSaveContact = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
 
-    const saved = LedgerService.saveContact({
+    const saved = await LedgerService.saveContact({
       type: activeTab,
       name,
       phone,
@@ -81,8 +92,7 @@ export const Ledger: React.FC = () => {
     });
 
     if (openingBalance > 0) {
-      // Record initial transaction
-      LedgerService.addTransaction({
+      await LedgerService.addTransaction({
         entityId: saved.id,
         type: 'debit',
         amount: openingBalance,
@@ -90,7 +100,7 @@ export const Ledger: React.FC = () => {
       });
     }
 
-    loadContacts();
+    await loadContacts();
     setShowAddContact(false);
     setName('');
     setPhone('');
@@ -99,11 +109,11 @@ export const Ledger: React.FC = () => {
   };
 
   // Handle Record Transaction
-  const handleRecordPayment = (e: React.FormEvent) => {
+  const handleRecordPayment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedContact || paymentAmount <= 0) return;
 
-    LedgerService.addTransaction({
+    await LedgerService.addTransaction({
       entityId: selectedContact.id,
       type: paymentType,
       amount: paymentAmount,
@@ -111,12 +121,11 @@ export const Ledger: React.FC = () => {
     });
 
     // Refresh selected contact state and transactions list
-    const updatedContacts = LedgerService.getContacts();
+    const updatedContacts = await LedgerService.getContacts();
     const updatedContact = updatedContacts.find(c => c.id === selectedContact.id) || null;
     setSelectedContact(updatedContact);
-    loadContacts();
+    await loadContacts();
 
-    // Close Modal
     setShowRecordPayment(false);
     setPaymentAmount(0);
     setPaymentDescription('');
@@ -181,7 +190,7 @@ export const Ledger: React.FC = () => {
         </div>
       </div>
 
-      {/* Main Ledger Split Pane (Profiles on Left, Transactions on Right) */}
+      {/* Main Ledger Split Pane */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
         
         {/* Left Profiles List */}
@@ -199,35 +208,41 @@ export const Ledger: React.FC = () => {
             </div>
           </div>
 
-          <div className="divide-y divide-slate-100 dark:divide-slate-800 max-h-[400px] overflow-y-auto">
-            {filteredContacts.map(c => (
-              <div
-                key={c.id}
-                onClick={() => setSelectedContact(c)}
-                className={`p-4 cursor-pointer transition-colors text-left flex justify-between items-center ${selectedContact?.id === c.id ? 'bg-indigo-50 dark:bg-indigo-950/40 border-l-4 border-indigo-600' : 'hover:bg-slate-50/50 dark:hover:bg-slate-950/20'}`}
-              >
-                <div className="flex items-center gap-3 overflow-hidden">
-                  <div className="w-9 h-9 rounded-full bg-indigo-600/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-sm shrink-0">
-                    {c.name[0].toUpperCase()}
+          {loading ? (
+            <div className="text-center py-12">
+              <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-indigo-650 mx-auto" />
+            </div>
+          ) : (
+            <div className="divide-y divide-slate-100 dark:divide-slate-800 max-h-[400px] overflow-y-auto">
+              {filteredContacts.map(c => (
+                <div
+                  key={c.id}
+                  onClick={() => setSelectedContact(c)}
+                  className={`p-4 cursor-pointer transition-colors text-left flex justify-between items-center ${selectedContact?.id === c.id ? 'bg-indigo-50 dark:bg-indigo-950/40 border-l-4 border-indigo-600' : 'hover:bg-slate-50/50 dark:hover:bg-slate-950/20'}`}
+                >
+                  <div className="flex items-center gap-3 overflow-hidden">
+                    <div className="w-9 h-9 rounded-full bg-indigo-600/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-sm shrink-0">
+                      {c.name[0].toUpperCase()}
+                    </div>
+                    <div className="overflow-hidden">
+                      <h4 className="font-semibold text-sm truncate leading-tight">{c.name}</h4>
+                      <span className="text-[10px] text-slate-400 dark:text-slate-500 mt-1 block">{c.phone || 'No phone'}</span>
+                    </div>
                   </div>
-                  <div className="overflow-hidden">
-                    <h4 className="font-semibold text-sm truncate leading-tight">{c.name}</h4>
-                    <span className="text-[10px] text-slate-400 dark:text-slate-500 mt-1 block">{c.phone || 'No phone'}</span>
+                  <div className="text-right">
+                    <span className={`text-sm font-bold block font-sans ${c.currentBalance > 0 ? 'text-amber-600 dark:text-amber-500' : 'text-slate-400'}`}>
+                      ₹{c.currentBalance}
+                    </span>
                   </div>
                 </div>
-                <div className="text-right">
-                  <span className={`text-sm font-bold block font-sans ${c.currentBalance > 0 ? 'text-amber-600 dark:text-amber-500' : 'text-slate-400'}`}>
-                    ₹{c.currentBalance}
-                  </span>
+              ))}
+              {filteredContacts.length === 0 && (
+                <div className="text-center py-12 text-slate-400 text-xs">
+                  No ledger profiles found.
                 </div>
-              </div>
-            ))}
-            {filteredContacts.length === 0 && (
-              <div className="text-center py-12 text-slate-400 text-xs">
-                No ledger profiles found.
-              </div>
-            )}
-          </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Right Ledger Transactions Log */}
@@ -247,7 +262,6 @@ export const Ledger: React.FC = () => {
                   </div>
                 </div>
                 
-                {/* Balance display and transaction buttons */}
                 <div className="flex items-center gap-4 w-full sm:w-auto justify-between sm:justify-end">
                   <div className="text-right shrink-0">
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Balance Dues</span>
@@ -255,7 +269,7 @@ export const Ledger: React.FC = () => {
                   </div>
                   <button
                     onClick={() => {
-                      setPaymentType('credit'); // default to credit payment
+                      setPaymentType('credit');
                       setShowRecordPayment(true);
                     }}
                     className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-4 py-2 rounded-xl text-xs shadow-md transition-all cursor-pointer"

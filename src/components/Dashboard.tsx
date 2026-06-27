@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   TrendingUp, 
   Receipt, 
@@ -8,6 +8,7 @@ import {
   ArrowRight,
   Users
 } from 'lucide-react';
+import { Product, Invoice, CustomerSupplier } from '../services/db';
 import { ProductService } from '../services/productService';
 import { BillingService } from '../services/billingService';
 import { LedgerService } from '../services/ledgerService';
@@ -17,9 +18,29 @@ interface DashboardProps {
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
-  const products = useMemo(() => ProductService.getProducts(), []);
-  const invoices = useMemo(() => BillingService.getInvoices(), []);
-  const contacts = useMemo(() => LedgerService.getContacts(), []);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [contacts, setContacts] = useState<CustomerSupplier[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Load metrics asynchronously
+  useEffect(() => {
+    const loadDashboardData = async () => {
+      try {
+        const prodList = await ProductService.getProducts();
+        const invList = await BillingService.getInvoices();
+        const contactList = await LedgerService.getContacts();
+        setProducts(prodList);
+        setInvoices(invList);
+        setContacts(contactList);
+      } catch (e) {
+        console.error("Error loading dashboard data:", e);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadDashboardData();
+  }, []);
 
   // Compute Metrics
   const totalRevenue = useMemo(() => {
@@ -123,7 +144,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
           </linearGradient>
         </defs>
         
-        {/* Horizontal gridlines */}
         {[0, 0.25, 0.5, 0.75, 1].map((ratio, index) => {
           const y = padding + chartHeight * ratio;
           return (
@@ -139,7 +159,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
           );
         })}
 
-        {/* Areas & Curves */}
         {points.length > 0 && (
           <>
             <path d={areaData} fill="url(#areaGrad)" />
@@ -147,7 +166,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
           </>
         )}
 
-        {/* Data points */}
         {points.map((p, i) => (
           <g key={i} className="group/dot cursor-pointer">
             <circle cx={p.x} cy={p.y} r="5" className="fill-white stroke-indigo-600 dark:stroke-indigo-400 stroke-[3]" />
@@ -155,7 +173,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
           </g>
         ))}
 
-        {/* Labels */}
         {dailySalesData.map((d, i) => {
           const x = padding + (i * chartWidth) / (dailySalesData.length - 1);
           return (
@@ -174,7 +191,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
     );
   };
 
-  // Render SVG for Profit & Loss
   const renderPLChart = () => {
     const width = 500;
     const height = 180;
@@ -187,7 +203,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
 
     return (
       <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full">
-        {/* Horizontal gridlines */}
         {[0, 0.25, 0.5, 0.75, 1].map((ratio, index) => {
           const y = padding + chartHeight * ratio;
           return (
@@ -203,7 +218,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
           );
         })}
 
-        {/* Bars */}
         {monthlyData.map((d, i) => {
           const x = padding + (i * chartWidth) / (monthlyData.length - 1) + 5;
           const profitHeight = (d.profit / maxVal) * chartHeight;
@@ -214,7 +228,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
 
           return (
             <g key={i}>
-              {/* Profit bar (Green/Emerald) */}
               <rect 
                 x={x - barWidth - 2} 
                 y={profitY} 
@@ -223,7 +236,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                 rx="3"
                 className="fill-emerald-500 hover:fill-emerald-600 transition-colors duration-150" 
               />
-              {/* Loss bar (Rose) */}
               <rect 
                 x={x + 2} 
                 y={lossY} 
@@ -236,7 +248,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
           );
         })}
 
-        {/* Labels */}
         {monthlyData.map((d, i) => {
           const x = padding + (i * chartWidth) / (monthlyData.length - 1) + 5;
           return (
@@ -254,6 +265,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
       </svg>
     );
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-indigo-650" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -280,7 +299,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
       {/* Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
         
-        {/* Total Revenue Card */}
         <div className="bg-white dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800/50 rounded-2xl p-5 hover:shadow-xl hover:shadow-slate-100 dark:hover:shadow-none hover:-translate-y-0.5 transition-all duration-200 group">
           <div className="flex justify-between items-start">
             <div>
@@ -297,7 +315,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
           </div>
         </div>
 
-        {/* Total Invoices Card */}
         <div className="bg-white dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800/50 rounded-2xl p-5 hover:shadow-xl hover:shadow-slate-100 dark:hover:shadow-none hover:-translate-y-0.5 transition-all duration-200 group">
           <div className="flex justify-between items-start">
             <div>
@@ -314,7 +331,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
           </div>
         </div>
 
-        {/* Pending Dues Card */}
         <div className="bg-white dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800/50 rounded-2xl p-5 hover:shadow-xl hover:shadow-slate-100 dark:hover:shadow-none hover:-translate-y-0.5 transition-all duration-200 group">
           <div className="flex justify-between items-start">
             <div>
@@ -330,7 +346,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
           </div>
         </div>
 
-        {/* Low Stock Alerts Card */}
         <div className="bg-white dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800/50 rounded-2xl p-5 hover:shadow-xl hover:shadow-slate-100 dark:hover:shadow-none hover:-translate-y-0.5 transition-all duration-200 group">
           <div className="flex justify-between items-start">
             <div>
@@ -356,7 +371,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
       {/* Analytics SVG Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         
-        {/* Daily Sales Chart */}
         <div className="bg-white dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800/50 rounded-2xl p-5 flex flex-col justify-between">
           <div className="flex justify-between items-center mb-4">
             <div>
@@ -373,7 +387,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
           </div>
         </div>
 
-        {/* Monthly P&L Chart */}
         <div className="bg-white dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800/50 rounded-2xl p-5 flex flex-col justify-between">
           <div className="flex justify-between items-center mb-4">
             <div>
@@ -400,7 +413,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
       {/* Bottom Inventory Warnings & Top Sellers Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         
-        {/* Top Selling Products */}
         <div className="bg-white dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800/50 rounded-2xl p-5">
           <div className="flex justify-between items-center mb-4">
             <h4 className="font-bold text-base flex items-center gap-2">
@@ -434,7 +446,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
           )}
         </div>
 
-        {/* Low Stock Indicators */}
         <div className="bg-white dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800/50 rounded-2xl p-5">
           <div className="flex justify-between items-center mb-4">
             <h4 className="font-bold text-base flex items-center gap-2">
@@ -459,7 +470,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                     <span className="text-xs text-slate-400 dark:text-slate-500 mt-1 block">SKU: {item.sku}</span>
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-orange-100 dark:bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-200 dark:border-orange-500/20">
+                    <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-orange-100 dark:bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-200/50 dark:border-orange-500/20">
                       {item.stock} left
                     </span>
                   </div>

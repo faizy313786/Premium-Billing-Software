@@ -20,14 +20,13 @@ function App() {
     const user = AuthService.getCurrentUser();
     if (user) {
       setCurrentUser(user);
-      // default staff directly to POS Billing
       if (user.role === 'staff') {
         setActiveTab('billing');
       }
     }
   }, []);
 
-  const handleLoginSubmit = (e: React.FormEvent) => {
+  const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError('');
 
@@ -36,7 +35,7 @@ function App() {
       return;
     }
 
-    const user = AuthService.login(usernameInput);
+    const user = await AuthService.login(usernameInput);
     if (user) {
       setCurrentUser(user);
       if (user.role === 'staff') {
@@ -50,8 +49,8 @@ function App() {
     }
   };
 
-  const handleQuickLogin = (uname: string) => {
-    const user = AuthService.login(uname);
+  const handleQuickLogin = async (uname: string) => {
+    const user = await AuthService.login(uname);
     if (user) {
       setCurrentUser(user);
       if (user.role === 'staff') {
